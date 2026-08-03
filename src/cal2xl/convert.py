@@ -60,7 +60,11 @@ def merge_ics(
     records: list[dict[str, str]] = []
     for name, source in sources:
         try:
-            records.extend(ics_to_records(source, label=name if label_source else None))
+            records.extend(
+                ics_to_records(
+                    source, fields=fields, label=name if label_source else None
+                )
+            )
         except Exception as exc:
             raise ValueError(f"{name}: {exc}") from exc
 
