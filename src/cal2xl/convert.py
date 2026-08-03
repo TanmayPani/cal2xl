@@ -5,8 +5,8 @@ import io
 
 import icalendar
 
-# FIELDS = ("start", "end", "location", "summary", "description")
-FIELDS = ("start", "location", "summary", "description")
+FIELDS = ("start", "end", "location", "summary", "description")
+# FIELDS = ("start", "location", "summary", "description")
 
 # Added when several calendars are merged, so an event can be traced back to its file.
 SOURCE_FIELD = "calendar"
@@ -17,18 +17,21 @@ SOURCE_FIELD = "calendar"
 Source = Path | bytes | str
 
 
-def ics_to_records(source: Source, *, label: str | None = None) -> list[dict[str, str]]:
+def ics_to_records(
+    source: Source, *, fields: Sequence[str] | None = None, label: str | None = None
+) -> list[dict[str, str]]:
     """Parse a calendar into one dict per event, keyed by FIELDS.
 
     label, when given, adds a trailing SOURCE_FIELD column naming where each event came
     from, which is what makes a merged table readable.
     """
+    fields_to_read = fields or FIELDS
     cal = icalendar.Calendar.from_ical(source)
     records = []
     for event in cal.events:
         record = {
             field: "" if (value := getattr(event, field, None)) is None else str(value)
-            for field in FIELDS
+            for field in fields_to_read
         }
         if label is not None:
             record[SOURCE_FIELD] = label
@@ -37,7 +40,10 @@ def ics_to_records(source: Source, *, label: str | None = None) -> list[dict[str
 
 
 def merge_ics(
-    sources: Sequence[tuple[str, Source]], *, label_source: bool | None = None
+    sources: Sequence[tuple[str, Source]],
+    *,
+    fields: Sequence[str] | None = None,
+    label_source: bool | None = None,
 ) -> list[dict[str, str]]:
     """Parse several calendars into one chronological list of events.
 

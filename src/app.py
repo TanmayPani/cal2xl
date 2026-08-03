@@ -59,11 +59,14 @@ def _(upload):
     # exported with a UTF-8 BOM, which is most of them.
     uploads = list(upload.value) if upload.value else []
 
+    _fields = ("start", "location", "summary", "description")
     error = None
     records = []
     if uploads:
         try:
-            records = merge_ics([(item.name, item.contents) for item in uploads])
+            records = merge_ics(
+                [(item.name, item.contents) for item in uploads], fields=_fields
+            )
         except Exception as exc:  # a bad file is a message, not a traceback
             error = str(exc)
     return error, records, uploads
