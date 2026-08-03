@@ -1,10 +1,11 @@
+from collections.abc import Sequence
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from tksheet import Sheet
 
-from cal2xl.convert import FIELDS, ics_to_rows, write_csv
+from cal2xl.convert import FIELDS, csv_bytes, merge_ics
 
 ICS_FILETYPES = [("Calendar files", "*.ics"), ("All files", "*.*")]
 CSV_FILETYPES = [("CSV files", "*.csv"), ("All files", "*.*")]
@@ -19,7 +20,9 @@ class App(ttk.Frame):
         super().__init__(master, padding=8)
         self.pack(fill="both", expand=True)
 
-        self.input_path: Path | None = None
+        self.input_paths: list[Path] = []
+        # Merging several calendars adds a source column, so the header is not fixed.
+        self.headers = list(FIELDS)
 
         top = ttk.Frame(self)
         top.pack(fill="x", pady=(0, 8))
@@ -40,38 +43,59 @@ class App(ttk.Frame):
         )
         self.save_button.pack(side="right")
 
-    def load(self, path: Path) -> None:
-        """Parse path and populate the grid. Reports failures in a dialog."""
-        try:
-            rows = ics_to_rows(path)
-        except Exception as exc:
-            messagebox.showerror("Could not read calendar", f"{path.name}\n\n{exc}")
+    def load(self, paths: Path | Sequence[Path]) -> None:
+        """Parse paths and populate the grid. Reports failures in a dialog.
+
+        Several calendars are merged into one table in date order, tagged with the file
+        each event came from.
+        """
+        paths = [paths] if isinstance(paths, Path) else list(paths)
+        if not paths:
             return
 
-        self.input_path = path
+        try:
+            records = merge_ics([(path.name, path) for path in paths])
+        except Exception as exc:
+            messagebox.showerror("Could not read calendar", str(exc))
+            return
+
+        headers = list(records[0]) if records else list(FIELDS)
+        rows = [[record.get(field, "") for field in headers] for record in records]
+
+        self.input_paths = paths
+        self.headers = headers
+        self.sheet.headers(headers)
         self.sheet.set_sheet_data(rows)
         self.sheet.set_all_cell_sizes_to_text(width=MAX_COLUMN_WIDTH)
-        self.path_label.config(text=str(path), foreground="")
+        self.path_label.config(text=self.describe_input(), foreground="")
         self.save_button.config(state="normal")
 
         if rows:
             self.set_status(f"{len(rows)} events loaded — edit cells, then save.")
         else:
-            self.set_status("No events found in this file.")
+            self.set_status("No events found.")
+
+    def describe_input(self) -> str:
+        if len(self.input_paths) == 1:
+            return str(self.input_paths[0])
+        return f"{len(self.input_paths)} calendars merged"
 
     def open_ics(self) -> None:
-        initial_dir = str(self.input_path.parent) if self.input_path else "."
-        filename = filedialog.askopenfilename(
-            title="Open calendar file",
+        initial_dir = str(self.input_paths[0].parent) if self.input_paths else "."
+        filenames = filedialog.askopenfilenames(
+            title="Open calendar files",
             filetypes=ICS_FILETYPES,
             initialdir=initial_dir,
         )
-        if filename:
-            self.load(Path(filename))
+        if filenames:
+            self.load([Path(name) for name in filenames])
 
     def save_csv(self) -> None:
-        assert self.input_path is not None  # the button is disabled until a file loads
-        default = self.input_path.with_suffix(".csv")
+        assert self.input_paths  # the button is disabled until a file loads
+        if len(self.input_paths) == 1:
+            default = self.input_paths[0].with_suffix(".csv")
+        else:
+            default = self.input_paths[0].parent / "calendars.csv"
         filename = filedialog.asksaveasfilename(
             title="Save CSV as",
             filetypes=CSV_FILETYPES,
@@ -85,26 +109,26 @@ class App(ttk.Frame):
         output_path = Path(filename)
         rows = [[str(cell) for cell in row] for row in self.sheet.get_sheet_data()]
         try:
-            count = write_csv(rows, output_path)
+            output_path.write_bytes(csv_bytes(self.headers, rows))
         except Exception as exc:
             messagebox.showerror("Could not save CSV", f"{output_path.name}\n\n{exc}")
             return
 
-        self.set_status(f"✓ Wrote {count} events to {output_path.name}")
+        self.set_status(f"✓ Wrote {len(rows)} events to {output_path.name}")
 
     def set_status(self, text: str) -> None:
         self.status_label.config(text=text)
 
 
-def run(input_path: Path | None = None) -> None:
-    """Open the main window, optionally pre-loaded with input_path."""
+def run(input_paths: Sequence[Path] | None = None) -> None:
+    """Open the main window, optionally pre-loaded with input_paths."""
     root = tk.Tk()
     root.title("cal2xl")
     root.geometry("1000x600")
     root.minsize(600, 300)
 
     app = App(root)
-    if input_path is not None:
-        app.load(input_path)
+    if input_paths:
+        app.load(input_paths)
 
     root.mainloop()

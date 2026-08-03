@@ -1,10 +1,14 @@
 # cal2xl
 
-Convert an iCalendar `.ics` export into a spreadsheet-friendly `.csv`.
+Convert iCalendar `.ics` exports into a spreadsheet-friendly `.csv`.
 
-Open a calendar file, review and edit the events in a built-in spreadsheet, then save
-the CSV wherever you want. Columns are `start`, `end`, `location`, `summary`,
+Open one calendar or several, review and edit the events in a built-in spreadsheet, then
+save the CSV wherever you want. Columns are `start`, `end`, `location`, `summary`,
 `description`.
+
+Several calendars are **merged into a single table in date order**, with a trailing
+`calendar` column naming the file each event came from. A single calendar is left
+alone — no source column, and the output keeps the input's name.
 
 It comes in two shapes over one conversion library:
 
@@ -55,7 +59,9 @@ The same executable also converts on the command line:
 ```
 cal2xl                                    # GUI, empty
 cal2xl calendar.ics                       # GUI, pre-loaded with that file
+cal2xl work.ics home.ics                  # GUI, both merged into one table
 cal2xl calendar.ics --no-gui              # writes calendar.csv next to the input
+cal2xl work.ics home.ics --no-gui         # writes a merged calendars.csv
 cal2xl calendar.ics -o out.csv --no-gui   # writes to a chosen path
 ```
 
@@ -64,9 +70,9 @@ smart quotes intact.
 
 ## The web app
 
-`src/app.py` is a [marimo](https://marimo.io) notebook: upload an `.ics`, edit the
-events in a grid, download the `.csv`. Same three steps as the desktop app, same
-`convert.py` underneath.
+`src/app.py` is a [marimo](https://marimo.io) notebook: upload one or more `.ics` files,
+edit the merged events in a grid, download the `.csv`. Same steps as the desktop app,
+same `convert.py` underneath.
 
 The grid does more than edit cells. **New row** / **Delete row** sit under it, and
 hovering a column header reveals a `▾` menu with **Rename column**, **Add column to the

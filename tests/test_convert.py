@@ -5,9 +5,11 @@ import pytest
 
 from cal2xl.convert import (
     FIELDS,
+    SOURCE_FIELD,
     convert,
     ics_to_records,
     ics_to_rows,
+    merge_ics,
     records_to_csv_bytes,
     write_csv,
 )
@@ -17,6 +19,10 @@ from cal2xl.convert import (
 # line endings, a folded description, a U+2019 smart quote, commas inside fields, an
 # event with no LOCATION, and a timed event alongside the all-day ones.
 SAMPLE_ICS = Path(__file__).parent / "fixtures" / "sample.ics"
+
+# A second calendar whose events fall between sample.ics's, so a merge that failed to
+# interleave would be visible rather than coincidentally correct.
+OTHER_ICS = Path(__file__).parent / "fixtures" / "other.ics"
 
 
 @pytest.fixture
@@ -110,6 +116,59 @@ def test_renamed_column_survives_into_the_header():
     renamed = [{"when": "2026-07-26", "what": "Potluck"}]
     header = records_to_csv_bytes(renamed)[3:].split(b"\r\n")[0]
     assert header == b"when,what"
+
+
+@pytest.fixture
+def merged() -> list[dict[str, str]]:
+    return merge_ics([("sample.ics", SAMPLE_ICS), ("other.ics", OTHER_ICS)])
+
+
+def test_merge_interleaves_calendars_by_date(merged):
+    assert len(merged) == 6
+    assert [record["start"] for record in merged] == sorted(
+        record["start"] for record in merged
+    )
+    # Second event comes from the other file, so the two are genuinely interleaved
+    # rather than concatenated.
+    assert merged[0]["summary"] == "Neighbourhood Potluck"
+    assert merged[1]["summary"] == "Morning Litter Pick"
+
+
+def test_merge_tags_each_event_with_its_calendar(merged):
+    assert {record[SOURCE_FIELD] for record in merged} == {"sample.ics", "other.ics"}
+    assert merged[1][SOURCE_FIELD] == "other.ics"
+
+
+def test_single_calendar_gets_no_source_column():
+    only_one = merge_ics([("sample.ics", SAMPLE_ICS)])
+
+    assert all(SOURCE_FIELD not in record for record in only_one)
+    assert list(only_one[0]) == list(FIELDS)
+
+
+def test_merged_csv_carries_the_source_column(merged):
+    lines = records_to_csv_bytes(merged)[3:].decode().split("\r\n")
+
+    assert lines[0] == ",".join([*FIELDS, SOURCE_FIELD])
+    assert lines[1].endswith(",sample.ics")
+    assert len([line for line in lines if line.strip()]) == 7  # header + 6 events
+
+
+def test_merge_names_the_calendar_that_failed(tmp_path):
+    broken = tmp_path / "broken.ics"
+    broken.write_bytes(b"this is not a calendar")
+
+    with pytest.raises(ValueError, match="broken.ics"):
+        merge_ics([("sample.ics", SAMPLE_ICS), ("broken.ics", broken)])
+
+
+def test_events_without_a_start_sort_last():
+    records = merge_ics(
+        [("a", SAMPLE_ICS)], label_source=False
+    ) + [dict.fromkeys(FIELDS, "")]
+    records.sort(key=lambda record: (record["start"] == "", record["start"]))
+
+    assert records[-1]["start"] == ""
 
 
 def test_convert_defaults_output_next_to_input(tmp_path):

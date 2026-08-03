@@ -11,15 +11,13 @@ import marimo
 __generated_with = "0.23.16"
 app = marimo.App(width="medium")
 
-
-@app.cell
-def _():
+with app.setup(hide_code=True):
     from pathlib import Path
 
     import marimo as mo
     from marimo._plugins.ui._impl.tables.default_table import DefaultTableManager
 
-    from cal2xl.convert import ics_to_records, records_to_csv_bytes
+    from cal2xl.convert import merge_ics, records_to_csv_bytes
 
     # For plain Python data mo.ui.data_editor reports no column types at all, so the
     # browser guesses them -- and reads a start of "2026-07-26" as a JavaScript Date in
@@ -30,66 +28,67 @@ def _():
         (str(name), ("string", "str")) for name in self.get_column_names()
     ]
 
-    return Path, ics_to_records, mo, records_to_csv_bytes
-
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md("""
-    # cal2xl
+    # Calender (.ics) to Spreadsheet Converter
 
-    Turn a calendar export into a spreadsheet. Pick an `.ics` file, check the events
-    over — every cell is editable — then download the `.csv` and open it in Excel,
-    Numbers or Google Sheets.
+    Turn calendar exports into a spreadsheet. Pick one `.ics` file or several — several
+    are merged into a single table, in date order — check the events over, edit anything
+    you like, then download the `.csv` and open it in Excel, Numbers or Google Sheets.
     """)
     return
 
 
 @app.cell
-def _(mo):
+def _():
     upload = mo.ui.file(
         filetypes=[".ics"],
+        multiple=True,
         kind="area",
-        label="Drop an .ics calendar file here, or click to browse",
+        label="Drop .ics calendar files here, or click to browse",
     )
     upload
     return (upload,)
 
 
 @app.cell
-def _(ics_to_records, upload):
+def _(upload):
     # icalendar reads the uploaded bytes itself. Decoding first would break any file
     # exported with a UTF-8 BOM, which is most of them.
-    uploaded = upload.value[0] if upload.value else None
+    uploads = list(upload.value) if upload.value else []
 
     error = None
     records = []
-    if uploaded is not None:
+    if uploads:
         try:
-            records = ics_to_records(uploaded.contents)
+            records = merge_ics([(item.name, item.contents) for item in uploads])
         except Exception as exc:  # a bad file is a message, not a traceback
             error = str(exc)
-
-    return error, records, uploaded
+    return error, records, uploads
 
 
 @app.cell(hide_code=True)
-def _(error, mo, records, uploaded):
+def _(error, records, uploads):
+    if len(uploads) == 1:
+        source = f"`{uploads[0].name}`"
+    else:
+        source = f"{len(uploads)} calendars"
+
     if error is not None:
         status = mo.callout(
-            mo.md(f"**Could not read `{uploaded.name}`**\n\n```\n{error}\n```"),
+            mo.md(f"**Could not read a calendar**\n\n```\n{error}\n```"),
             kind="danger",
         )
-    elif uploaded is None:
-        status = mo.md("*Waiting for a calendar file.*")
+    elif not uploads:
+        status = mo.md("*Waiting for calendar files.*")
     elif not records:
-        status = mo.callout(
-            mo.md(f"No events found in `{uploaded.name}`."), kind="warn"
-        )
+        status = mo.callout(mo.md(f"No events found in {source}."), kind="warn")
     else:
         plural = "" if len(records) == 1 else "s"
         status = mo.md(
-            f"**{len(records)} event{plural}** from `{uploaded.name}` — "
+            f"**{len(records)} event{plural}** from {source} — "
             "edit any cell, then download below."
         )
     status
@@ -97,7 +96,7 @@ def _(error, mo, records, uploaded):
 
 
 @app.cell
-def _(mo, records):
+def _(records):
     # Stopping here leaves `editor` undefined, which also holds back the download
     # button until there is something to download.
     mo.stop(not records)
@@ -108,11 +107,17 @@ def _(mo, records):
 
 
 @app.cell
-def _(Path, editor, mo, records_to_csv_bytes, uploaded):
+def _(editor, uploads):
+    # One calendar keeps its own name; a merge of several gets a neutral one.
+    if len(uploads) == 1:
+        download_name = Path(uploads[0].name).with_suffix(".csv").name
+    else:
+        download_name = "calendars.csv"
+
     # Lazy so the file is built at click time, from the latest edits.
     mo.download(
         data=lambda: records_to_csv_bytes(editor.value),
-        filename=Path(uploaded.name).with_suffix(".csv").name,
+        filename=download_name,
         mimetype="text/csv",
         label="Download CSV",
     )

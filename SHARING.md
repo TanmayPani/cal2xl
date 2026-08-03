@@ -13,6 +13,9 @@ calendar file is processed in their own browser and never gets uploaded anywhere
 > Then click the box to pick your `.ics` file, check the table looks right, and click
 > **Download CSV**. Open the result in Excel.
 >
+> You can pick several calendars at once. They come out as one table sorted by date,
+> with a `calendar` column on the end saying which file each event came from.
+>
 > The table is fully editable before you download: click any cell to change it, use
 > **New row** / **Delete row** underneath, and hover a column heading for a small `▾`
 > menu that lets you rename a column, delete one, or add your own.

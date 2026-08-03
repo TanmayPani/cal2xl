@@ -28,7 +28,7 @@ def test_app_runs_with_no_upload():
     outputs, defs = app.app.run()
 
     assert defs["records"] == []
-    assert defs["uploaded"] is None
+    assert defs["uploads"] == []
     assert defs["error"] is None
     # mo.stop held back the grid, and with it the download button.
     assert "editor" not in defs
