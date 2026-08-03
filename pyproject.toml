@@ -1,0 +1,29 @@
+[project]
+name = "cal2xl"
+version = "0.1.0"
+description = "Convert iCalendar (.ics) files to spreadsheet-friendly CSV"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "icalendar>=7.2.2",
+    "tksheet>=7.6",
+]
+
+[project.scripts]
+cal2xl = "cal2xl.__main__:main"
+
+[dependency-groups]
+build = ["pyinstaller>=6.21"]
+dev = ["pytest>=8"]
+# Kept out of `dependencies` so the desktop install and the PyInstaller build
+# environment stay small. anywidget is unused today; it is the escape hatch for
+# replacing mo.ui.data_editor with a custom grid, and it is deliberately absent from
+# the PEP 723 header in src/app.py so it never reaches the WASM bundle.
+web = ["marimo[recommended]>=0.23.16", "anywidget>=0.11.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cal2xl"]

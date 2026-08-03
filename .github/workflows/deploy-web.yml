@@ -1,0 +1,77 @@
+name: deploy-web
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race. A newer push waits its turn rather than cancelling a
+# deploy that is already publishing.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # The export shells out to uv twice more -- once for `ruff analyze graph` to find
+      # the notebook's local imports, once to build those into a wheel -- so uv has to
+      # be on PATH, not just providing the venv.
+      - name: Install dependencies
+        run: uv sync --group web --group dev
+
+      - name: Run tests
+        run: uv run pytest -q
+
+      # Catches imports and system calls that would work here but die in Pyodide.
+      - name: Check WASM compatibility
+        run: uv run marimo check --select MW src/app.py
+
+      - name: Export the notebook to WebAssembly
+        run: |
+          uv run marimo export html-wasm src/app.py \
+            --output site \
+            --mode run \
+            --no-sandbox \
+            --force
+
+      # A missing wheel means the export silently shipped a notebook that cannot
+      # import its own conversion code, and the page would only fail in the browser.
+      - name: Verify the cal2xl wheel was bundled
+        run: |
+          ls -l site/public/wheels/cal2xl-*.whl
+          test -f site/index.html
+
+      # Artifact-based Pages does not run Jekyll, but the bundle contains files like
+      # assets/_baseFor-*.js that Jekyll would drop -- cheap insurance in case the
+      # Pages source is ever switched back to serving from a branch.
+      - name: Disable Jekyll
+        run: touch site/.nojekyll
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

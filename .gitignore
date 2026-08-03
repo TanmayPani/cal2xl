@@ -1,0 +1,25 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.serena
+.pytest_cache
+.python_version
+# Real calendars and their output stay local -- this repo is public.
+*.csv
+*.ics
+# ...except the invented fixture the tests are built on.
+!tests/fixtures/*.ics
+!tests/fixtures/*.csv
+
+# Container build output
+dist-linux/
+
+# marimo WASM export
+site/
